@@ -1,0 +1,261 @@
+******** STAKEHOLDER ********
+Aspiring app developer seeking data driven insights on what kind of app to build
+
+What app categories are most popular?
+
+What price should I set?
+
+How can I maximize user ratings?
+
+
+
+
+******** DATA PREPERATION ********
+
+
+login to https://sqliteonline.com/
+
+Import all files:
+- AppleStore
+- All AppleStore_description files
+
+--Combine all data in one table called 'appleStore_desc_combined' using UNION ALL 
+CREATE TABLE appleStore_desc_combined AS
+SELECT * FROM appleStore_description1
+UNION ALL
+SELECT * FROM appleStore_description2
+UNION ALL 
+SELECT * FROM appleStore_description3
+UNION ALL
+SELECT * FROM appleStore_description4
+
+
+
+
+******** EDA ********
+
+
+-- *** check the number of unique apps in both tables AppleStore ***
+-- *** as difference in count would highlight missing data ***
+
+SELECT count(distinct id) AS UniqueAppIDs FROM appleStore_desc_combined;
+SELECT count(distinct id) AS UniqueAppIDs FROM appleStore;
+
+-- *** results for both in count: 7197 ***
+
+
+
+-- *** check for any missing vlaues in key fields ***
+
+SELECT count(*) MissingValues
+FROM AppleStore
+WHERE track_name is null or user_rating is NULL or prime_genre is null;
+
+
+
+SELECT count(*) MissingValues
+FROM appleStore_desc_combined
+WHERE app_desc is NULL
+
+-- *** result for both:0 ***
+
+
+
+-- *** find the number of apps per genre ***
+-- *** to gain an overview of the app distribution (#apps per genre) to identify dominant app types in the apple store
+
+SELECT prime_genre, count(*) NumApps
+FROM AppleStore
+GROUP by prime_genre
+ORDER by NumApps DESC;
+
+/* dominant genres are Games and Entertainment
+"Games"	"3862"
+"Entertainment"	"535"
+"Education"	"453"
+"Photo & Video"	"349"
+"Utilities"	"248"
+"Health & Fitness"	"180"
+"Productivity"	"178"
+"Social Networking"	"167"
+"Lifestyle"	"144"
+"Music"	"138"
+"Shopping"	"122"
+"Sports"	"114"
+"Book"	"112"
+"Finance"	"104"
+"Travel"	"81"
+"News"	"75"
+"Weather"	"72"
+"Reference"	"64"
+"Food & Drink"	"63"
+"Business"	"57"
+"Navigation"	"46"
+"Medical"	"23"
+"Catalogs"	"10"
+*/
+
+-- *** get an overview of the apps ratings ***
+-- *** to know what's the distribution *** 
+
+SELECT min(user_rating) as MinRating,
+       max(user_rating) AS MaxRating,
+       avg(user_rating) as AvgRating
+FROM AppleStore;
+
+/* 
+"0"	"5"	"3.526955675976101"
+*/
+
+
+
+-- *** Determine if paid apps have higher ratings than free apps ***
+-- *** to know which to is worth investing time into ***
+SELECT CASE
+	    WHEN price > 0 then 'paid'
+            ELSE 'free'
+       END as App_Type,
+       avg(user_rating) as Avg_Rating
+FROM AppleStore
+GROUP BY App_Type;
+
+/*
+"free"	"3.3767258382642997"
+"paid"	"3.720948742438714"
+*/
+
+
+
+-- *** Check if apps with more supported languages have higher ratings
+-- *** to know how many languages to support
+
+SELECT CASE
+	    WHEN lang_num < 10 then '< 10 languages'
+            WHEN lang_num BETWEEN 10 AND 30 then '10 - 30 languages'
+            ELSE '> 30 languages' 
+       END as language_bucket,
+       avg(user_rating) as Avg_Rating
+FROM AppleStore
+GROUP BY language_bucket
+ORDER BY Avg_Rating DESC;
+
+/*
+"10 - 30 languages"	"4.1305120910384066"
+"> 30 languages"	"3.7777777777777777"
+"< 10 languages"	"3.368327402135231"
+*/
+
+-- *** insight: this means we do not necessarily need too many languages for the app
+
+
+-- *** Check which genres have low ratings 
+-- *** to find improvement opportunities to place the app to these genres
+
+select prime_genre,
+       avg(user_rating) as Avg_Rating
+from AppleStore
+group by prime_genre
+ORDER BY Avg_Rating ASC
+LIMIT 10;
+
+/*
+"Catalogs"	"2.1"
+"Finance"	"2.4326923076923075"
+"Book"	"2.4776785714285716"
+"Navigation"	"2.6847826086956523"
+"Lifestyle"	"2.8055555555555554"
+"News"	"2.98"
+"Sports"	"2.982456140350877"
+"Social Networking"	"2.9850299401197606"
+"Food & Drink"	"3.1825396825396823"
+"Entertainment"	"3.2467289719626167"
+*/
+
+-- *** Catalogs and Finance genres seem to need mostly improved apps 
+
+
+
+-- *** Check if there is a correlation between the length of the app description and the user rating
+-- *** to know how important an extensive description is
+
+
+SELECT CASE
+	    WHEN length(b.app_desc) < 500 THEN 'short'
+            WHEN length(b.app_desc) BETWEEN 500 AND 1000 THEN 'medium'
+            ELSE 'long'
+       END as desc_length_bucket,
+       avg(a.user_rating) as Avg_Rating
+FROM AppleStore a
+INNER JOIN appleStore_desc_combined b
+ON a.id=b.id
+GROUP BY desc_length_bucket
+ORDER BY Avg_Rating DESC;
+
+/*
+"long"	"3.855946944988041"
+"medium""3.232809430255403"
+"short"	"2.533613445378151"
+*/
+
+-- *** insight: the longer the description the better it is for the app rating as users want to know about the app features
+-- *** before downloading the app
+
+
+
+-- *** Check the top-rated apps for each genre
+-- *** to know which for to design the app for
+
+SELECT
+    prime_genre,
+    track_name,
+    user_rating
+FROM (
+      SELECT
+      prime_genre,
+      track_name,
+      user_rating,
+      RANK() OVER(PARTITION BY prime_genre ORDER BY user_rating DESC, rating_count_tot DESC) AS rank
+      FROM
+      AppleStore
+     ) AS a
+WHERE
+a.rank = 1; 
+
+/*
+"Book"	"Color Therapy Adult Coloring Book for Adults"	"5"
+"Business"	"TurboScan™ Pro - document & receipt scanner: scan multiple pages and photos to PDF"	"5"
+"Catalogs"	"CPlus for Craigslist app - mobile classifieds"	"5"
+"Education"	"Elevate - Brain Training and Games"	"5"
+"Entertainment"	"Bruh-Button"	"5"
+"Finance"	"Credit Karma: Free Credit Scores, Reports & Alerts"	"5"
+"Food & Drink"	"Domino's Pizza USA"	"5"
+"Games"	"Head Soccer"	"5"
+"Health & Fitness"	"Yoga Studio"	"5"
+"Lifestyle"	"ipsy - Makeup, subscription and beauty tips"	"5"
+"Medical"	"Blink Health"	"5"
+"Music"	"Tenuto"	"5"
+"Navigation"	"parkOmator – for Apple Watch meter expiration timer, notifications & GPS navigator to car location"	"5"
+"News"	"The Guardian"	"5"
+"Photo & Video"	"Pic Collage - Picture Editor & Photo Collage Maker"	"5"
+"Productivity"	"VPN Proxy Master - Unlimited WiFi security VPN"	"5"
+"Reference"	"Sky Guide: View Stars Night or Day"	"5"
+"Shopping"	"Zappos: shop shoes & clothes, fast free shipping"	"5"
+"Social Networking"	"We Heart It - Fashion, wallpapers, quotes, tattoos"	"5"
+"Sports"	"J23 - Jordan Release Dates and History"	"5"
+"Travel"	"Urlaubspiraten"	"5"
+"Utilities"	"Flashlight Ⓞ"	"5"
+"Weather"	"NOAA Hi-Def Radar Pro -  Storm Warnings, Hurricane Tracker & Weather Forecast"	"5"
+*/
+  
+-- *** insight: our developer can check these top performing apps of each genre to try emulate these 
+
+
+
+*** RECOMMENDATIONS ***
+
+1. Paid apps have better ratings
+2. Apps with 10 to 30 language support have better ratings, so focusing on the right languages is key
+3. Finance and book apps have low ratings, so in these areas user needs are not fully met, so as market opportunity to target -> potential for high user ratings and market penetration
+4. Apps with a longer description have better ratings
+5. A new app should aim for a rating above 3.5 as 3.5 is the average rating of all apps
+6. Games and entertainment have high competition, a very high volume of apps suggesting the market may be saturated. Entering these spaces might be challenging due to high competition. However, it suggests a high user demand in these sectors.
